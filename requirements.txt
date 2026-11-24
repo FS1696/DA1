@@ -1,0 +1,23 @@
+# Project runtime: Python 3.12+
+# Vnstock v6.0.1 and its Open API connector (official Vnstock package index).
+--extra-index-url https://vnstocks.com/api/packages
+vnstock==6.0.1
+vnstock-oapi==0.1.2
+
+# Data processing
+pandas
+numpy
+
+# Database
+SQLAlchemy>=2.0,<3.0
+psycopg[binary]>=3.2,<4.0
+
+# Scheduling and HTTP notifications
+APScheduler>=3.10,<4.0
+requests>=2.31,<3.0
+
+# Timezone database fallback for minimal Docker images
+tzdata
+
+# Tests
+pytest>=8.0,<9.0

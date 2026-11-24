@@ -78,6 +78,13 @@ DEFAULT_BACKFILL_YEARS: Final[int] = 5
 DEFAULT_RECONCILE_BUFFER_DAYS: Final[int] = 7
 DEFAULT_FETCH_DELAY_SECONDS: Final[float] = 1.0
 DEFAULT_FETCH_MAX_RETRIES: Final[int] = 3
+# Chờ trước lần thử lại đầu tiên khi lỗi tạm thời; các lần sau nhân đôi.
+DEFAULT_FETCH_RETRY_BACKOFF_SECONDS: Final[float] = 5.0
+# Tài liệu vnstock khuyên chờ khoảng một phút khi nguồn giới hạn tần suất.
+DEFAULT_RATE_LIMIT_WAIT_SECONDS: Final[float] = 60.0
+# Độ dài tối đa (ngày lịch) của mỗi lần gọi khi nạp lịch sử, để tránh vượt giới
+# hạn số dòng/lần gọi của nguồn (đặc tả mục 4.3).
+DEFAULT_MAX_DAYS_PER_REQUEST: Final[int] = 366
 
 # Chỉ báo kỹ thuật (đặc tả mục 6.1).
 DEFAULT_MA_SHORT_PERIOD: Final[int] = 20
@@ -127,9 +134,11 @@ _PLACEHOLDER_PATTERN: Final = re.compile(r"^(|change_?me|put_\w*_here)$", re.IGN
 
 
 class ConfigError(ValueError):
-    
+   
+
+
 def _is_placeholder(value: str) -> bool:
-    
+   
     return _PLACEHOLDER_PATTERN.match(value.strip()) is not None
 
 
@@ -140,6 +149,7 @@ def _is_placeholder(value: str) -> bool:
 
 @dataclass(frozen=True)
 class TickerProfile:
+    
 
     company_name: str
     exchange: str
@@ -172,6 +182,7 @@ TICKER_PROFILES: Final[Mapping[str, TickerProfile]] = MappingProxyType(
 
 @dataclass(frozen=True)
 class DataSourceSettings:
+    
 
     provider: str = DEFAULT_DATA_PROVIDER
     source: str = DEFAULT_DATA_SOURCE
@@ -184,6 +195,9 @@ class DataSourceSettings:
     reconcile_buffer_days: int = DEFAULT_RECONCILE_BUFFER_DAYS
     fetch_delay_seconds: float = DEFAULT_FETCH_DELAY_SECONDS
     fetch_max_retries: int = DEFAULT_FETCH_MAX_RETRIES
+    retry_backoff_seconds: float = DEFAULT_FETCH_RETRY_BACKOFF_SECONDS
+    rate_limit_wait_seconds: float = DEFAULT_RATE_LIMIT_WAIT_SECONDS
+    max_days_per_request: int = DEFAULT_MAX_DAYS_PER_REQUEST
 
     @property
     def source_label(self) -> str:
@@ -249,6 +263,7 @@ class SignalSettings:
 @dataclass(frozen=True)
 class TelegramSettings:
     
+
     bot_token: str = field(default="", repr=False)
     chat_id: str = field(default="", repr=False)
     timeout_seconds: float = DEFAULT_TELEGRAM_TIMEOUT_SECONDS
@@ -442,7 +457,7 @@ class Settings:
 
 
 def _format_errors(issues: list[str]) -> str:
-    
+   
     return "Cấu hình không hợp lệ:\n" + "\n".join(f"  - {issue}" for issue in issues)
 
 
@@ -457,7 +472,7 @@ class _EnvReader:
         self.errors: list[str] = []
 
     def text(self, name: str, default: str = "") -> str:
-        
+       
         value = self._environ.get(name, "").strip()
         return value or default
 
@@ -522,8 +537,6 @@ def _missing_credentials(env: _EnvReader, source: str) -> tuple[str, ...]:
 
 def _database_mismatches(env: _EnvReader, database_url: str) -> tuple[str, ...]:
     
-
-  
     try:
         parts = urlsplit(database_url)
         actual = {

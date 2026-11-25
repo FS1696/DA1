@@ -1,29 +1,3 @@
-"""Validate and normalize OHLCV data returned by ``data.collector``.
-
-This module deliberately has no network, database, scheduling, or Telegram code.
-It accepts the collector's internal schema, validates every row, removes exact
-re-fetch duplicates, and returns rejected rows with explicit reason codes.
-
-Public API
-----------
-``preprocess_ohlcv(frame, settings, expected_ticker=None)``
-    Validate one ticker's DataFrame.
-
-``preprocess_collection(collection, settings)``
-    Validate every ticker in a ``CollectionResult`` while preserving its failures.
-
-Data policy
------------
-* Never fill missing prices/volume with zero or forward-fill market data.
-* Never rescale prices: collector output is already in thousand VND.
-* A volume of zero is allowed; a negative/fractional volume is not.
-* ``trading_date`` is a market-local date; ``fetched_at`` must be timezone-aware
-  and is converted to UTC.
-* Exact duplicate bars for a ticker/date keep the most recently fetched row.
-* Conflicting valid bars for the same ticker/date are all rejected rather than
-  selecting one arbitrarily.
-"""
-
 from __future__ import annotations
 
 import logging
@@ -66,21 +40,12 @@ _OHLC_REL_TOL: Final[float] = 1e-12
 
 
 class PreprocessingError(ValueError):
-    """Raised when the input violates the DataFrame-level collector contract.
-
-    Individual bad rows do not raise this exception. They are returned in the
-    ``rejected`` DataFrame so that one malformed bar does not discard an entire
-    ticker's otherwise valid history.
-    """
+    
 
 
 @dataclass(frozen=True)
 class PreprocessingReport:
-    """Counts describing one preprocessing operation.
-
-    ``rejection_counts`` counts reason-code occurrences, not unique rows. One
-    rejected row can contribute more than one reason code.
-    """
+    
 
     input_rows: int
     accepted_rows: int
@@ -91,7 +56,7 @@ class PreprocessingReport:
 
 @dataclass(frozen=True)
 class PreprocessingResult:
-    """Validated and rejected rows for one ticker (or one input DataFrame)."""
+    
 
     valid: pd.DataFrame
     rejected: pd.DataFrame
@@ -99,13 +64,13 @@ class PreprocessingResult:
 
     @property
     def ok(self) -> bool:
-        """True if no input row was rejected (exact duplicates are not rejects)."""
+        
         return self.rejected.empty
 
 
 @dataclass(frozen=True)
 class CollectionPreprocessingResult:
-    """Preprocessing outcomes for a complete collector batch."""
+    
 
     frames: Mapping[str, pd.DataFrame]
     rejected: pd.DataFrame
@@ -114,7 +79,7 @@ class CollectionPreprocessingResult:
 
     @property
     def ok(self) -> bool:
-        """True if there are no collector/structural failures or rejected rows."""
+        
         return not self.failures and self.rejected.empty
 
     @property
@@ -130,7 +95,7 @@ class CollectionPreprocessingResult:
         return sum(report.duplicate_rows_removed for report in self.reports.values())
 
     def combined(self) -> pd.DataFrame:
-        """Stack all non-empty valid ticker frames in the collector schema."""
+        
         non_empty = [frame for frame in self.frames.values() if not frame.empty]
         if not non_empty:
             return empty_ohlcv_frame()
@@ -142,14 +107,14 @@ class CollectionPreprocessingResult:
         )
 
     def combined_rejected(self) -> pd.DataFrame:
-        """Return all rejected rows; an empty result retains the documented columns."""
+        
         if self.rejected.empty:
             return _empty_rejected_frame()
         return self.rejected.reset_index(drop=True)
 
 
 def _is_missing(value: object) -> bool:
-    """Scalar-safe missing-value check (avoids ambiguous array truth values)."""
+    
     if value is None:
         return True
     try:
@@ -160,7 +125,7 @@ def _is_missing(value: object) -> bool:
 
 
 def _parse_trading_date(value: object, market_timezone: str) -> date:
-    """Convert a date/timestamp to a market-local ``datetime.date``."""
+    
     if _is_missing(value):
         raise ValueError("missing_trading_date")
 
@@ -182,7 +147,7 @@ def _parse_trading_date(value: object, market_timezone: str) -> date:
 
 
 def _parse_fetched_at(value: object) -> pd.Timestamp:
-    """Parse a timezone-aware fetch timestamp and convert it to UTC."""
+    
     if _is_missing(value):
         raise ValueError("missing_fetched_at")
     try:
@@ -197,7 +162,7 @@ def _parse_fetched_at(value: object) -> pd.Timestamp:
 
 
 def _parse_finite_number(value: object, field_name: str) -> float:
-    """Parse one finite numeric field and return a stable reason code on error."""
+    
     if _is_missing(value):
         raise ValueError(f"missing_{field_name}")
     if isinstance(value, bool):
@@ -220,7 +185,7 @@ def _normalize_one_row(
     market_timezone: str,
     latest_trading_date: date,
 ) -> tuple[dict[str, object] | None, list[str]]:
-    """Return a normalized row or a list of machine-readable rejection codes."""
+    
     reasons: list[str] = []
     normalized: dict[str, object] = {}
 
@@ -304,7 +269,7 @@ def _normalize_one_row(
 
 
 def _same_ohlcv(left: Mapping[str, object], right: Mapping[str, object]) -> bool:
-    """Whether two normalized bars have identical market values."""
+   
     prices_equal = all(
         math.isclose(
             float(left[column]),
@@ -318,7 +283,7 @@ def _same_ohlcv(left: Mapping[str, object], right: Mapping[str, object]) -> bool
 
 
 def _build_valid_frame(rows: list[dict[str, object]]) -> pd.DataFrame:
-    """Build the collector's exact output schema and stable dtypes."""
+    
     if not rows:
         return empty_ohlcv_frame()
 
@@ -338,14 +303,14 @@ def _build_valid_frame(rows: list[dict[str, object]]) -> pd.DataFrame:
 
 
 def _empty_rejected_frame() -> pd.DataFrame:
-    """Empty rejected-frame schema."""
+    
     frame = empty_ohlcv_frame()
     frame[REJECTED_REASON_COLUMN] = pd.Series(dtype="object")
     return frame.loc[:, [*OUTPUT_COLUMNS, REJECTED_REASON_COLUMN]]
 
 
 def _build_rejected_frame(rows: list[dict[str, object]]) -> pd.DataFrame:
-    """Build rejected rows, retaining raw values for diagnosis."""
+    
     if not rows:
         return _empty_rejected_frame()
     return pd.DataFrame(rows, columns=[*OUTPUT_COLUMNS, REJECTED_REASON_COLUMN]).reset_index(drop=True)
@@ -357,26 +322,7 @@ def preprocess_ohlcv(
     *,
     expected_ticker: str | None = None,
 ) -> PreprocessingResult:
-    """Validate one collector DataFrame and return valid/rejected records.
-
-    Parameters
-    ----------
-    raw:
-        DataFrame returned by ``StockCollector.fetch_daily_ohlcv``. It must
-        contain every column in ``collector.OUTPUT_COLUMNS``. Extra columns are
-        ignored so that downstream modules receive a stable schema.
-    settings:
-        The same immutable settings object used by the collector.
-    expected_ticker:
-        Optional ticker key from ``CollectionResult.frames``. When supplied,
-        every row must match it.
-
-    Notes
-    -----
-    Row-level errors are placed in ``result.rejected``. Structural contract
-    errors (wrong input type or missing required columns) raise
-    ``PreprocessingError`` because the module cannot safely interpret the input.
-    """
+   
     if not isinstance(raw, pd.DataFrame):
         raise PreprocessingError(
             f"Đầu vào phải là pandas.DataFrame, nhận được {type(raw).__name__}."
@@ -499,12 +445,7 @@ def preprocess_collection(
     collection: CollectionResult,
     settings: Settings,
 ) -> CollectionPreprocessingResult:
-    """Preprocess every ticker in a ``CollectionResult`` independently.
-
-    Collector-level ticker failures are preserved. A structural preprocessing
-    error for one ticker is added to ``failures`` and does not prevent the other
-    ticker frames from being processed.
-    """
+    
     if not isinstance(collection, CollectionResult):
         raise PreprocessingError(
             "collection phải là data.collector.CollectionResult."
